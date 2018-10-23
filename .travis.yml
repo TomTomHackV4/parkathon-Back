@@ -1,13 +1,22 @@
+sudo: required
+
+language: scala
+
+services:
+- docker
+
+
+
 jobs:
   include:
   - stage: build
     script: ./gradlew clean build -x test
   - stage: test
     script: ./gradlew test
-  - stage: "create docker image"
+  - stage: deploy
+    install:
+      - ./gradlew clean build -x test
+      - docker build -t tomtomhackv4/parkathon-back .
+      - docker login --username=$DOCKERHUBUSER --password=$DOCKERHUBPASSWORD
     script:
-    - ./gradlew clean build -x test
-    - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
-    - docker build -t back .
-    - docker run -p 8080:8080 back
-    - curl -v localhost:8080/info
+      - docker push tomtomhackv4/parkathon-back
