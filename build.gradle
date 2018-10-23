@@ -37,7 +37,7 @@ dependencies {
 	compile('org.scala-lang:scala-library:2.12.7')
     compile('com.fasterxml.jackson.module:jackson-module-scala_2.12')
     compile('com.fasterxml.jackson.datatype:jackson-datatype-jsr310')
-
+    compile('org.mongodb.scala:mongo-scala-driver_2.12:2.4.2')
 
     testCompile('org.springframework.boot:spring-boot-starter-test')
 }

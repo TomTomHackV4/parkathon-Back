@@ -12,10 +12,10 @@ import scala.collection.JavaConverters._
 class ParkingSpotsRestController {
 
   @GetMapping(Array("/parking-spots"))
-  def getAvailableParkingSpots: util.List[ParkingSpot] =
-    List(
+  def getAvailableParkingSpots: Seq[ParkingSpot] =
+    Seq(
       new ParkingSpot(52.133, 13.231, Instant.now),
       new ParkingSpot(52.132, 13.232, Instant.now),
       new ParkingSpot(52.131, 13.233, Instant.now),
-    ).asJava
+    )
 }
