@@ -6,6 +6,7 @@ jobs:
     script: ./gradlew test
   - stage: "create docker image"
     script:
+    - ./gradlew clean build -x test
     - echo "$DOCKER_PASSWORD" | docker login -u "$DOCKER_USERNAME" --password-stdin
     - docker build -t back .
     - docker run -p 8080:8080 back
