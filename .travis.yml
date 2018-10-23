@@ -10,9 +10,7 @@ services:
 jobs:
   include:
   - stage: build
-    script: ./gradlew clean build -x test
-  - stage: test
-    script: ./gradlew test
+    script: ./gradlew clean build
   - stage: deploy
     install:
       - ./gradlew clean build -x test
