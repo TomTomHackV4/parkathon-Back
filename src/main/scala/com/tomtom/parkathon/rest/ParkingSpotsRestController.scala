@@ -1,7 +1,7 @@
 package com.tomtom.parkathon.rest
 
 import com.tomtom.parkathon.db.ParkingSpotDatabase
-import com.tomtom.parkathon.domain.ParkingSpot
+import com.tomtom.parkathon.domain.{Location, ParkingSpot}
 import org.springframework.web.bind.annotation._
 
 @RestController
@@ -20,14 +20,10 @@ class ParkingSpotsRestController {
       position.substring(position.indexOf(":") + 1).toDouble)
 
   @PostMapping(Array("/park-start"))
-  def startParking(@RequestBody parkingSpot: ParkingSpot): Unit =
-    println(parkingSpot)
-
-  //parkingSpotDatabase.markAsOccupied(parkingSpot.latitude, parkingSpot.longitude)
+  def startParking(@RequestBody location: Location): Unit =
+    parkingSpotDatabase.deleteParkingSpot(location.latitude, location.longitude)
 
   @PostMapping(Array("/park-stop"))
-  def stopParking(@RequestBody parkingSpot: ParkingSpot): Unit =
-    println(parkingSpot)
-
-  //parkingSpotDatabase.markAsFree(parkingSpot.latitude, parkingSpot.longitude)
+  def stopParking(@RequestBody location: Location): Unit =
+    parkingSpotDatabase.createParkingSpot(location.latitude, location.longitude)
 }

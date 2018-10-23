@@ -4,14 +4,17 @@ import java.time.Instant
 import java.util.Date
 
 import com.mongodb.MongoCredential.createCredential
+import com.mongodb.client.result.DeleteResult
 import com.tomtom.parkathon.db.model.DbParkingSpot
 import com.tomtom.parkathon.domain.{Location, ParkingSpot}
 import org.bson.codecs.configuration.CodecRegistries.{fromProviders, fromRegistries}
 import org.bson.codecs.configuration.CodecRegistry
+import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.bson.codecs.DEFAULT_CODEC_REGISTRY
 import org.mongodb.scala.bson.codecs.Macros.createCodecProvider
+import org.mongodb.scala.model.geojson.{NamedCoordinateReferenceSystem, Point, Position}
 import org.mongodb.scala.model.{Filters, Sorts}
-import org.mongodb.scala.{MongoClient, MongoClientSettings, MongoCollection, MongoCredential, MongoDatabase, ServerAddress}
+import org.mongodb.scala.{Completed, MongoClient, MongoClientSettings, MongoCollection, MongoCredential, MongoDatabase, ServerAddress}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.duration.{Duration, DurationInt}
@@ -21,6 +24,7 @@ import scala.language.postfixOps
 class ParkingSpotDatabase(host: String = "104.248.240.148",
                           databaseName: String = "parkathon",
                           collectionName: String = "spots") extends AutoCloseable {
+
 
   val user: String = "root" // the user name
   val source: String = "admin" // the source where the user is defined
@@ -75,6 +79,35 @@ class ParkingSpotDatabase(host: String = "104.248.240.148",
       dbRecord.reportingTime.toInstant
     )
   }
+
+  private def metersToDegrees(radiusMeters: Double): Double =
+  // Just a very coarse conversion
+    radiusMeters / ParkingSpotDatabase.MetersPerDegree
+
+  def deleteParkingSpot(latitude: Double, longitude: Double, timeoutSeconds: Option[Int] = None): Unit = {
+    val deleteFuture: Future[DeleteResult] =
+      collection
+        .deleteMany(Filters.geoWithinCenter("location", longitude, latitude, metersToDegrees(25)))
+        .toFuture()
+
+    Await.result(deleteFuture, timeoutSeconds.map(_ seconds).getOrElse(Duration.Inf))
+  }
+
+  def createParkingSpot(latitude: Double, longitude: Double, timeoutSeconds: Option[Int] = None): Unit = {
+    if (isUnknownParkingSpot(latitude, longitude)) {
+      val insertFuture: Future[Completed] =
+        collection
+          .insertOne(DbParkingSpot(latitude, longitude, new Date()))
+          .toFuture()
+
+      Await.result(insertFuture, timeoutSeconds.map(_ seconds).getOrElse(Duration.Inf))
+    }
+  }
+
+  private def isUnknownParkingSpot(latitude: Double, longitude: Double): Boolean =
+    Await.result(collection
+      .find(Filters.geoWithinCenter("location", longitude, latitude, metersToDegrees(25)))
+      .toFuture(), Duration.Inf).size == 0
 
   override def close(): Unit = mongoClient.close()
 }
