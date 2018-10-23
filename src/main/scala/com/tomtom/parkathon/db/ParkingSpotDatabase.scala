@@ -5,7 +5,7 @@ import java.util.Date
 
 import com.mongodb.MongoCredential.createCredential
 import com.tomtom.parkathon.db.model.DbParkingSpot
-import com.tomtom.parkathon.domain.ParkingSpot
+import com.tomtom.parkathon.domain.{Location, ParkingSpot}
 import org.bson.codecs.configuration.CodecRegistries.{fromProviders, fromRegistries}
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.bson.codecs.DEFAULT_CODEC_REGISTRY
@@ -71,8 +71,7 @@ class ParkingSpotDatabase(host: String = "104.248.240.148",
   private def toDomainModel(dbRecord: DbParkingSpot): ParkingSpot = {
     val coords: Seq[Double] = dbRecord.location.getPosition.getValues.asScala.map(_.doubleValue())
     ParkingSpot(
-      coords(1),
-      coords(0),
+      Location(coords(1), coords(0)),
       dbRecord.reportingTime.toInstant
     )
   }
