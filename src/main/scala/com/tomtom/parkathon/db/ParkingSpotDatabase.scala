@@ -10,7 +10,7 @@ import org.bson.codecs.configuration.CodecRegistries.{fromProviders, fromRegistr
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.bson.codecs.DEFAULT_CODEC_REGISTRY
 import org.mongodb.scala.bson.codecs.Macros.createCodecProvider
-import org.mongodb.scala.model.Filters
+import org.mongodb.scala.model.{Filters, Sorts}
 import org.mongodb.scala.{MongoClient, MongoClientSettings, MongoCollection, MongoCredential, MongoDatabase, ServerAddress}
 
 import scala.collection.JavaConverters._
@@ -60,6 +60,7 @@ class ParkingSpotDatabase(host: String = "104.248.240.148",
           Filters.gte("reportingTime", nowMinusSeconds(maxAgeSeconds)),
           Filters.geoWithinCenter("location", longitude, latitude, radiusDegrees))
         )
+        .sort(Sorts.descending("reportingTime"))
         .limit(limit.getOrElse(Int.MaxValue))
         .map(toDomainModel)
         .toFuture()
