@@ -11,7 +11,9 @@ buildscript {
 }
 
 apply plugin: 'java'
+apply plugin: 'scala'
 apply plugin: 'eclipse'
+apply plugin: 'idea'
 apply plugin: 'org.springframework.boot'
 
 group = 'com.tomtom.parkathon'
@@ -22,13 +24,15 @@ repositories {
 	mavenCentral()
 }
 
-
 dependencies {
 	compile('org.springframework.boot:spring-boot-starter-actuator')
-	//compile('org.springframework.boot:spring-boot-starter-data-mongodb')
 	compile('org.springframework.boot:spring-boot-starter-web')
+    compile('org.springframework.boot:spring-boot-starter-jersey')
 	
-	//compile('org.scala-lang:scala-library')
-	
-	testCompile('org.springframework.boot:spring-boot-starter-test')
+	compile('org.scala-lang:scala-library:2.12.7')
+    compile('com.fasterxml.jackson.module:jackson-module-scala_2.12')
+    compile('com.fasterxml.jackson.datatype:jackson-datatype-jsr310')
+
+
+    testCompile('org.springframework.boot:spring-boot-starter-test')
 }
