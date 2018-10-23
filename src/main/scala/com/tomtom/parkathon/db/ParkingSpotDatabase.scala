@@ -49,9 +49,8 @@ class ParkingSpotDatabase(host: String = "104.248.240.148",
   private def nowMinusSeconds(maxAgeSeconds: Int): Date =
     Date.from(Instant.now.minusSeconds(maxAgeSeconds))
 
-  def queryParkingSpots(latitude: Double,
-                        longitude: Double,
-                        radiusMeters: Double,
+  def queryParkingSpots(location: Location,
+                        radiusMeters: Int,
                         maxAgeSeconds: Int,
                         limit: Option[Int] = None,
                         timeoutSeconds: Option[Int] = None): Seq[ParkingSpot] = {
@@ -62,7 +61,7 @@ class ParkingSpotDatabase(host: String = "104.248.240.148",
       collection
         .find(Filters.and(
           Filters.gte("reportingTime", nowMinusSeconds(maxAgeSeconds)),
-          Filters.geoWithinCenter("location", longitude, latitude, radiusDegrees))
+          Filters.geoWithinCenter("location", location.longitude, location.latitude, radiusDegrees))
         )
         .sort(Sorts.descending("reportingTime"))
         .limit(limit.getOrElse(Int.MaxValue))
