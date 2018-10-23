@@ -3,16 +3,23 @@ buildscript {
 		springBootVersion = '1.5.17.RELEASE'
 	}
 	repositories {
+		maven {
+			url "https://plugins.gradle.org/m2/"
+		}
 		mavenCentral()
 	}
 	dependencies {
 		classpath("org.springframework.boot:spring-boot-gradle-plugin:${springBootVersion}")
+		classpath("gradle.plugin.com.gorylenko.gradle-git-properties:gradle-git-properties:1.5.2")
 	}
 }
 
 apply plugin: 'java'
+apply plugin: 'scala'
 apply plugin: 'eclipse'
+apply plugin: 'idea'
 apply plugin: 'org.springframework.boot'
+apply plugin: 'com.gorylenko.gradle-git-properties'
 
 group = 'com.tomtom.parkathon'
 version = '0.0.1-SNAPSHOT'
@@ -22,13 +29,15 @@ repositories {
 	mavenCentral()
 }
 
-
 dependencies {
 	compile('org.springframework.boot:spring-boot-starter-actuator')
-	//compile('org.springframework.boot:spring-boot-starter-data-mongodb')
 	compile('org.springframework.boot:spring-boot-starter-web')
+    compile('org.springframework.boot:spring-boot-starter-jersey')
 	
-	//compile('org.scala-lang:scala-library')
-	
-	testCompile('org.springframework.boot:spring-boot-starter-test')
+	compile('org.scala-lang:scala-library:2.12.7')
+    compile('com.fasterxml.jackson.module:jackson-module-scala_2.12')
+    compile('com.fasterxml.jackson.datatype:jackson-datatype-jsr310')
+    compile('org.mongodb.scala:mongo-scala-driver_2.12:2.4.2')
+
+    testCompile('org.springframework.boot:spring-boot-starter-test')
 }
