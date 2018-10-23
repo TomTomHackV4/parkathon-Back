@@ -1,21 +1,26 @@
 package com.tomtom.parkathon.db
 
+import java.time.Instant
+import java.util.Date
+
 import com.mongodb.MongoCredential.createCredential
-import com.tomtom.parkathon.db.model.{ParkingSpot => DbParkingSpot}
+import com.tomtom.parkathon.db.model.DbParkingSpot
 import com.tomtom.parkathon.domain.ParkingSpot
 import org.bson.codecs.configuration.CodecRegistries.{fromProviders, fromRegistries}
 import org.bson.codecs.configuration.CodecRegistry
 import org.mongodb.scala.bson.codecs.DEFAULT_CODEC_REGISTRY
-import org.mongodb.scala.bson.codecs.Macros._
+import org.mongodb.scala.bson.codecs.Macros.createCodecProvider
 import org.mongodb.scala.model.Filters
 import org.mongodb.scala.{MongoClient, MongoClientSettings, MongoCollection, MongoCredential, MongoDatabase, ServerAddress}
 
 import scala.collection.JavaConverters._
-import scala.concurrent.Future
+import scala.concurrent.duration.{Duration, DurationInt}
+import scala.concurrent.{Await, Future}
+import scala.language.postfixOps
 
 class ParkingSpotDatabase(host: String = "104.248.240.148",
                           databaseName: String = "parkathon",
-                          collectionName: String = "spots") {
+                          collectionName: String = "spots") extends AutoCloseable {
 
   val user: String = "root" // the user name
   val source: String = "admin" // the source where the user is defined
@@ -33,18 +38,47 @@ class ParkingSpotDatabase(host: String = "104.248.240.148",
       .codecRegistry(codecRegistry)
       .build()
 
-  val mongoClient: MongoClient = MongoClient(settings)
+  private val mongoClient: MongoClient = MongoClient(settings)
+  private val database: MongoDatabase = mongoClient.getDatabase(databaseName)
+  private val collection: MongoCollection[DbParkingSpot] = database.getCollection(collectionName)
 
-  val database: MongoDatabase = mongoClient.getDatabase(databaseName)
+  private def nowMinusSeconds(maxAgeSeconds: Int): Date =
+    Date.from(Instant.now.minusSeconds(maxAgeSeconds))
 
-  val collection: MongoCollection[DbParkingSpot] = database.getCollection(collectionName)
+  def queryParkingSpots(latitude: Double,
+                        longitude: Double,
+                        radiusMeters: Double,
+                        maxAgeSeconds: Int,
+                        limit: Option[Int] = None,
+                        timeoutSeconds: Option[Int] = None): Seq[ParkingSpot] = {
+    // Just a very coarse conversion
+    val radiusDegrees: Double = radiusMeters / ParkingSpotDatabase.MetersPerDegree
 
-  def queryParkingSpots(latitude: Double, longitude: Double, radius: Double, limit: Option[Int] = None): Future[Seq[ParkingSpot]] =
-    collection
-      .find(Filters.geoWithinCenter("location", longitude, latitude, radius))
-      .limit(limit.getOrElse(Int.MaxValue))
-      .map(toDomainModel)
-      .toFuture()
+    val queryFuture: Future[Seq[ParkingSpot]] =
+      collection
+        .find(Filters.and(
+          Filters.gte("reportingTime", nowMinusSeconds(maxAgeSeconds)),
+          Filters.geoWithinCenter("location", longitude, latitude, radiusDegrees))
+        )
+        .limit(limit.getOrElse(Int.MaxValue))
+        .map(toDomainModel)
+        .toFuture()
 
-  private def toDomainModel(dbModel: DbParkingSpot): ParkingSpot = ???
+    Await.result(queryFuture, timeoutSeconds.map(_ seconds).getOrElse(Duration.Inf))
+  }
+
+  private def toDomainModel(dbRecord: DbParkingSpot): ParkingSpot = {
+    val coords: Seq[Double] = dbRecord.location.getPosition.getValues.asScala.map(_.doubleValue())
+    ParkingSpot(
+      coords(1),
+      coords(0),
+      dbRecord.reportingTime.toInstant
+    )
+  }
+
+  override def close(): Unit = mongoClient.close()
+}
+
+object ParkingSpotDatabase {
+  val MetersPerDegree: Double = 111000
 }
