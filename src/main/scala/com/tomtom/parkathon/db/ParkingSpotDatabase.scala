@@ -5,16 +5,15 @@ import java.util.Date
 
 import com.mongodb.MongoCredential.createCredential
 import com.mongodb.client.result.DeleteResult
+import com.tomtom.parkathon.db.ParkingSpotDatabase.{AvgEarthRadiusMeters, DefaultLocationTolerance, MetersPerDegree}
 import com.tomtom.parkathon.db.model.DbParkingSpot
 import com.tomtom.parkathon.domain.{Location, ParkingSpot}
 import org.bson.codecs.configuration.CodecRegistries.{fromProviders, fromRegistries}
 import org.bson.codecs.configuration.CodecRegistry
-import org.mongodb.scala.bson.ObjectId
 import org.mongodb.scala.bson.codecs.DEFAULT_CODEC_REGISTRY
 import org.mongodb.scala.bson.codecs.Macros.createCodecProvider
-import org.mongodb.scala.model.geojson.{NamedCoordinateReferenceSystem, Point, Position}
-import org.mongodb.scala.model.{Filters, Sorts}
-import org.mongodb.scala.{Completed, MongoClient, MongoClientSettings, MongoCollection, MongoCredential, MongoDatabase, ServerAddress}
+import org.mongodb.scala.model.{Filters, Sorts, Updates}
+import org.mongodb.scala.{MongoClient, MongoClientSettings, MongoCollection, MongoCredential, MongoDatabase, ServerAddress}
 
 import scala.collection.JavaConverters._
 import scala.concurrent.duration.{Duration, DurationInt}
@@ -52,65 +51,95 @@ class ParkingSpotDatabase(host: String = "104.248.240.148",
   def queryParkingSpots(location: Location,
                         radiusMeters: Int,
                         maxAgeSeconds: Int,
-                        limit: Option[Int] = None,
-                        timeoutSeconds: Option[Int] = None): Seq[ParkingSpot] = {
-    // Just a very coarse conversion
-    val radiusDegrees: Double = radiusMeters / ParkingSpotDatabase.MetersPerDegree
+                        timeoutSeconds: Option[Int] = None): Seq[ParkingSpot] =
+    queryParkingSpotsRaw(location, radiusMeters, maxAgeSeconds, timeoutSeconds)
+      .map(toDomainModel)
 
-    val queryFuture: Future[Seq[ParkingSpot]] =
+  private def queryParkingSpotsRaw(location: Location,
+                                   radiusMeters: Int,
+                                   maxAgeSeconds: Int,
+                                   timeoutSeconds: Option[Int] = None): Seq[DbParkingSpot] = {
+    val queryFuture: Future[Seq[DbParkingSpot]] =
       collection
         .find(Filters.and(
           Filters.gte("reportingTime", nowMinusSeconds(maxAgeSeconds)),
-          Filters.geoWithinCenter("location", location.longitude, location.latitude, radiusDegrees))
+          Filters.geoWithinCenter("location", location.longitude, location.latitude, metersToDegrees(radiusMeters)))
         )
         .sort(Sorts.descending("reportingTime"))
-        .limit(limit.getOrElse(Int.MaxValue))
-        .map(toDomainModel)
         .toFuture()
 
     Await.result(queryFuture, timeoutSeconds.map(_ seconds).getOrElse(Duration.Inf))
   }
 
-  private def toDomainModel(dbRecord: DbParkingSpot): ParkingSpot = {
-    val coords: Seq[Double] = dbRecord.location.getPosition.getValues.asScala.map(_.doubleValue())
+  private def toDomainModel(dbParkingSpot: DbParkingSpot): ParkingSpot =
     ParkingSpot(
-      Location(coords(1), coords(0)),
-      dbRecord.reportingTime.toInstant
+      getLocation(dbParkingSpot),
+      dbParkingSpot.reportingTime.toInstant
     )
+
+  private def getLocation(dbParkingSpot: DbParkingSpot): Location = {
+    val coords: Seq[Double] = dbParkingSpot.location.getPosition.getValues.asScala.map(_.doubleValue())
+    Location(coords(1), coords(0))
   }
 
-  private def metersToDegrees(radiusMeters: Double): Double =
-  // Just a very coarse conversion
-    radiusMeters / ParkingSpotDatabase.MetersPerDegree
-
-  def deleteParkingSpot(latitude: Double, longitude: Double, timeoutSeconds: Option[Int] = None): Unit = {
+  def deleteParkingSpot(location: Location,
+                        locationToleranceMeters: Int = DefaultLocationTolerance,
+                        timeoutSeconds: Option[Int] = None): Unit = {
     val deleteFuture: Future[DeleteResult] =
       collection
-        .deleteMany(Filters.geoWithinCenter("location", longitude, latitude, metersToDegrees(25)))
+        .deleteMany(
+          Filters.geoWithinCenter("location", location.longitude, location.latitude, metersToDegrees(locationToleranceMeters))
+        )
         .toFuture()
 
     Await.result(deleteFuture, timeoutSeconds.map(_ seconds).getOrElse(Duration.Inf))
   }
 
-  def createParkingSpot(latitude: Double, longitude: Double, timeoutSeconds: Option[Int] = None): Unit = {
-    if (isUnknownParkingSpot(latitude, longitude)) {
-      val insertFuture: Future[Completed] =
-        collection
-          .insertOne(DbParkingSpot(latitude, longitude, new Date()))
-          .toFuture()
+  private def distanceTo(location: Location)(dbParkingSpot: DbParkingSpot): Double = {
+    val dbLocation: Location = getLocation(dbParkingSpot)
 
-      Await.result(insertFuture, timeoutSeconds.map(_ seconds).getOrElse(Duration.Inf))
-    }
+    val latDistance = Math.toRadians(location.latitude - dbLocation.latitude)
+    val lngDistance = Math.toRadians(location.longitude - dbLocation.longitude)
+
+    val sinLat = Math.sin(latDistance / 2)
+    val sinLng = Math.sin(lngDistance / 2)
+
+    val a = sinLat * sinLat + (Math.cos(Math.toRadians(location.latitude)) * Math.cos(Math.toRadians(dbLocation.latitude)) * sinLng * sinLng)
+    val c = 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
+
+    (AvgEarthRadiusMeters * c).toInt
   }
 
-  private def isUnknownParkingSpot(latitude: Double, longitude: Double): Boolean =
-    Await.result(collection
-      .find(Filters.geoWithinCenter("location", longitude, latitude, metersToDegrees(25)))
-      .toFuture(), Duration.Inf).size == 0
+  // Just a very coarse conversion
+  private def metersToDegrees(radiusMeters: Double): Double =
+    radiusMeters / MetersPerDegree
+
+  def createParkingSpot(location: Location,
+                        locationToleranceMeters: Int = DefaultLocationTolerance,
+                        timeoutSeconds: Option[Int] = None): Unit = {
+    val existingParkingSpots: Seq[DbParkingSpot] =
+      queryParkingSpotsRaw(location, locationToleranceMeters, Int.MaxValue, timeoutSeconds = timeoutSeconds)
+    val dbAction =
+      if (existingParkingSpots.isEmpty) {
+        collection
+          .insertOne(DbParkingSpot(location.latitude, location.longitude, new Date()))
+          .toFuture()
+      } else {
+        val closestParkingSpot: DbParkingSpot = existingParkingSpots.minBy(distanceTo(location))
+        collection
+          .updateOne(Filters.eq("_id", closestParkingSpot._id), Updates.set("reportingTime", new Date()))
+          .toFuture()
+      }
+    Await.result(dbAction, timeoutSeconds.map(_ seconds).getOrElse(Duration.Inf))
+  }
 
   override def close(): Unit = mongoClient.close()
 }
 
 object ParkingSpotDatabase {
+
+  val AvgEarthRadiusMeters = 6371000
   val MetersPerDegree: Double = 111000
+
+  val DefaultLocationTolerance: Int = 25
 }
