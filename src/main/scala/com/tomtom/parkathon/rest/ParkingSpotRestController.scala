@@ -4,13 +4,13 @@ import java.util.Optional
 
 import com.tomtom.parkathon.db.ParkingSpotDatabase
 import com.tomtom.parkathon.domain.{Location, ParkingSpot}
-import com.tomtom.parkathon.rest.ParkingSpotsRestController.{DefaultMaxAgeSeconds, DefaultRadiusMeters}
+import com.tomtom.parkathon.rest.ParkingSpotRestController.{DefaultMaxAgeSeconds, DefaultRadiusMeters}
 import org.springframework.web.bind.annotation._
 
 import scala.compat.java8.OptionConverters.RichOptionalGeneric
 
 @RestController
-class ParkingSpotsRestController {
+class ParkingSpotRestController {
 
   val parkingSpotDatabase: ParkingSpotDatabase = new ParkingSpotDatabase()
 
@@ -31,14 +31,14 @@ class ParkingSpotsRestController {
 
   @PostMapping(Array("/park-start"))
   def startParking(@RequestBody location: Location): Unit =
-    parkingSpotDatabase.deleteParkingSpot(location.latitude, location.longitude)
+    parkingSpotDatabase.deleteParkingSpot(location)
 
   @PostMapping(Array("/park-stop"))
   def stopParking(@RequestBody location: Location): Unit =
-    parkingSpotDatabase.createParkingSpot(location.latitude, location.longitude)
+    parkingSpotDatabase.createParkingSpot(location)
 }
 
-object ParkingSpotsRestController {
+object ParkingSpotRestController {
 
   val DefaultRadiusMeters: Int = 1000
   val DefaultMaxAgeSeconds: Int = 600
